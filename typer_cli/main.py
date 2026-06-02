@@ -136,20 +136,30 @@ def calc_wpm(target, typed, elapsed):
     return f"{(ok / 5) / (elapsed / 60):.0f}"
 
 
-def calc_acc(target, typed):
+def calc_acc(target, typed, keystrokes, errors, strict):
+    if strict:
+        if not keystrokes:
+            return "-"
+        return f"{(keystrokes - errors) / keystrokes * 100:.1f}%"
     if not typed:
         return "-"
     ok = sum(1 for i in range(min(len(typed), len(target))) if typed[i] == target[i])
     return f"{ok / len(typed) * 100:.1f}%"
 
 
-def calc_results(target, typed, elapsed):
+def calc_results(target, typed, elapsed, keystrokes, errors, strict=False):
     n = min(len(typed), len(target))
     ok = sum(1 for i in range(n) if typed[i] == target[i])
     bad = n - ok
     w = (ok / 5) / (elapsed / 60) if elapsed > 0 else 0
-    rw = (len(typed) / 5) / (elapsed / 60) if elapsed > 0 else 0
-    a = (ok / len(typed) * 100) if typed else 0
+    if strict:
+        # monkeytype-style: every mistyped key counts, even if corrected
+        rw = (keystrokes / 5) / (elapsed / 60) if elapsed > 0 else 0
+        a = ((keystrokes - errors) / keystrokes * 100) if keystrokes else 0
+    else:
+        # lenient: only the final on-screen characters are scored
+        rw = (len(typed) / 5) / (elapsed / 60) if elapsed > 0 else 0
+        a = (ok / len(typed) * 100) if typed else 0
     errs = {}
     for i in range(n):
         if typed[i] != target[i]:
@@ -159,9 +169,9 @@ def calc_results(target, typed, elapsed):
                 chars=len(typed), time=elapsed, errs=errs)
 
 
-def draw_stats(scr, y, w, target, typed, elapsed, remain):
+def draw_stats(scr, y, w, target, typed, elapsed, remain, keystrokes, errors, strict):
     _wpm = calc_wpm(target, typed, elapsed)
-    _acc = calc_acc(target, typed)
+    _acc = calc_acc(target, typed, keystrokes, errors, strict)
     ts = f"{max(0, remain):.0f}s"
 
     # build the bar as: "  30 wpm   100.0% acc   24s  "
@@ -224,7 +234,7 @@ def draw_text(scr, lines, typed, target, sy, sx, aw, sh):
 
 # ── main test loop ───────────────────────────────────────────────────────────
 
-def test(scr, ti, di, update_info=None, theme_name="default"):
+def test(scr, ti, di, update_info=None, theme_name="default", strict=False):
     curses.curs_set(0)
     scr.nodelay(True)
     scr.timeout(50)
@@ -235,6 +245,8 @@ def test(scr, ti, di, update_info=None, theme_name="default"):
     wc = max(80, tlimit * 3)
     target = generate(wc, diff)
     typed = []
+    keystrokes = 0
+    errors = 0
     started = False
     t0 = 0.0
 
@@ -294,11 +306,14 @@ def test(scr, ti, di, update_info=None, theme_name="default"):
             ver = f"v{update_info['version']}" if update_info else ""
             if ver:
                 put(scr, h - 1, 1, ver, C_DIM)
-                put(scr, h - 1, 1 + len(ver) + 2, theme_name, C_DIM)
+                tx2 = 1 + len(ver) + 2
+                put(scr, h - 1, tx2, theme_name, C_DIM)
+                if strict:
+                    put(scr, h - 1, tx2 + len(theme_name) + 2, "strict", C_ACCENT)
             if user_name:
                 put(scr, h - 1, w - len(user_name) - 1, user_name, C_DIM)
         else:
-            draw_stats(scr, stats_y, w, target, typed, elapsed, remain)
+            draw_stats(scr, stats_y, w, target, typed, elapsed, remain, keystrokes, errors, strict)
             cpos = draw_text(scr, lines, typed, target, text_y, tx, aw, h)
             putc(scr, h - 1, w, "tab restart", C_HINT)
 
@@ -400,10 +415,12 @@ def test(scr, ti, di, update_info=None, theme_name="default"):
                 typed.pop()
         elif k == 32 and len(typed) < len(target):
             pos = len(typed)
+            keystrokes += 1
             if target[pos] == ' ':
                 typed.append(' ')
             else:
-                # early space: skip to next word
+                # early space: skip to next word (counts as one mistyped key)
+                errors += 1
                 next_space = target.find(' ', pos)
                 if next_space == -1:
                     typed.append(' ')
@@ -411,12 +428,16 @@ def test(scr, ti, di, update_info=None, theme_name="default"):
                     while len(typed) <= next_space and len(typed) < len(target):
                         typed.append(' ')
         elif 32 <= k <= 126 and len(typed) < len(target):
+            pos = len(typed)
+            keystrokes += 1
+            if chr(k) != target[pos]:
+                errors += 1
             typed.append(chr(k))
 
     sys.stdout.write("\033[0 q")
     sys.stdout.flush()
     elapsed = time.time() - t0 if started else 0.001
-    return calc_results(target, typed, elapsed), ti, di, theme_name
+    return calc_results(target, typed, elapsed, keystrokes, errors, strict), ti, di, theme_name
 
 
 # ── name prompt ──────────────────────────────────────────────────────────────
@@ -756,7 +777,7 @@ def run(scr, args):
     di = DIFFS.index(args.diff) if args.diff and args.diff in DIFFS else 1
 
     while True:
-        result, ti, di, theme_name = test(scr, ti, di, update_info, theme_name)
+        result, ti, di, theme_name = test(scr, ti, di, update_info, theme_name, args.strict)
 
         if result is None:
             return
@@ -783,6 +804,8 @@ def entry():
     parser.add_argument("-d", "--diff", type=str, metavar="LEVEL",
                         choices=["easy", "medium", "hard"],
                         help="difficulty (easy, medium, hard)")
+    parser.add_argument("-s", "--strict", action="store_true",
+                        help="strict accuracy: corrected mistakes still count against you")
     args = parser.parse_args()
 
     try:

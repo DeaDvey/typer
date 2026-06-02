@@ -31,7 +31,12 @@ typer -t 15        # 15 second test
 typer -t 60        # 60 second test
 typer -d hard      # hard difficulty
 typer -t 15 -d easy # quick easy warmup
+typer -s           # strict accuracy (corrected mistakes still count)
 ```
+
+By default, mistakes you fix don't hurt your accuracy. With `-s`/`--strict`,
+every mistyped key counts against your accuracy even if you correct it, and raw
+WPM reflects every keystroke — matching how monkeytype scores.
 
 ## Controls
 
@@ -48,6 +53,7 @@ typer -t 15 -d easy # quick easy warmup
 
 - Timed tests: 15s, 30s, 60s, 120s
 - Three difficulty levels (easy, medium, hard)
+- Optional strict accuracy mode (`-s`) where corrected mistakes still count
 - Live WPM and accuracy while typing
 - Personal stats: best WPM, streaks, per-difficulty averages, sparkline
 - User profiles stored locally at `~/.config/typer/`
