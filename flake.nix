@@ -16,7 +16,7 @@
         packages = {
           default = python.pkgs.buildPythonApplication {
             pname = "typer-cli-tool";
-            version = "0.6.0";
+            version = "0.7.0";
             src = ./.;
             format = "pyproject";
 
