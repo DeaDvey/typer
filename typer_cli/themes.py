@@ -64,6 +64,12 @@ THEMES = {
         C_TITLE: (230, -1), C_BORDER: (240, -1), C_GOOD: (64, -1),
         C_BAD: (160, -1), C_HINT: (246, -1),
     },
+    "gruvbox": {
+        C_DIM: (144, -1), C_OK: (142, -1), C_ERR: (167, -1),
+        C_CURSOR: (0, 172), C_ACCENT: (142, -1), C_STAT: (73, -1),
+        C_TITLE: (142, -1), C_BORDER: (245, -1), C_GOOD: (144, -1),
+        C_BAD: (167, -1), C_HINT: (144, -1),
+    }
 }
 
 THEME_NAMES = list(THEMES.keys())
