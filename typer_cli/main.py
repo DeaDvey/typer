@@ -2,73 +2,34 @@ import curses
 import time
 import argparse
 import sys
+import importlib
+from pathlib import Path
+import typer_cli.modes
 
+from typer_cli.helpers import (
+    cx, put, putc, hline, wrap, error
+)
 from typer_cli.sentences import generate
 from typer_cli.update import get_update_info
 from typer_cli.profile import (
     profile_exists, read_profile, create_profile, append_test,
-    post_race_stats, get_theme, set_theme, get_bind
+    post_race_stats, get_theme, set_theme, get_bind, get_modules
 )
 from typer_cli.themes import THEMES, THEME_NAMES
-
-# ── colors ───────────────────────────────────────────────────────────────────
-
-C_DIM = 1
-C_OK = 2
-C_ERR = 3
-C_CURSOR = 4
-C_ACCENT = 5
-C_STAT = 6
-C_TITLE = 7
-C_BORDER = 8
-C_GOOD = 9
-C_BAD = 10
-C_HINT = 11
-
-
-def init_colors(theme_name="default"):
-    curses.start_color()
-    curses.use_default_colors()
-    theme = THEMES.get(theme_name, THEMES["default"])
-    for pair_id, (fg, bg) in theme.items():
-        curses.init_pair(pair_id, fg, bg)
-
-
-# ── draw helpers ─────────────────────────────────────────────────────────────
-
-def cx(w, n):
-    return max(0, (w - n) // 2)
-
-
-def put(win, y, x, text, cp=0, attr=0):
-    try:
-        win.addstr(y, x, text, curses.color_pair(cp) | attr)
-    except curses.error:
-        pass
-
-
-def putc(win, y, w, text, cp=0, attr=0):
-    put(win, y, cx(w, len(text)), text, cp, attr)
-
-
-def hline(win, y, x, n, cp=C_BORDER):
-    put(win, y, x, "-" * n, cp)
-
-
-def wrap(text, width):
-    lines, cur = [], ""
-    for word in text.split(" "):
-        test = f"{cur} {word}" if cur else word
-        if len(test) <= width:
-            cur = test
-        else:
-            if cur:
-                lines.append(cur)
-            cur = word
-    if cur:
-        lines.append(cur)
-    return lines
-
+from typer_cli.colors import (
+    init_colors,
+    C_DIM,
+    C_OK,
+    C_ERR,
+    C_CURSOR,
+    C_ACCENT,
+    C_STAT,
+    C_TITLE,
+    C_BORDER,
+    C_GOOD,
+    C_BAD,
+    C_HINT,
+)
 
 # ── logo ─────────────────────────────────────────────────────────────────────
 
@@ -261,6 +222,7 @@ def test(scr, ti, di, update_info=None, theme_name="default", strict=False):
     errors = 0
     started = False
     t0 = 0.0
+    error_message = ""
 
     settings_y = 0
     hit_regions = []
@@ -275,6 +237,7 @@ def test(scr, ti, di, update_info=None, theme_name="default", strict=False):
             break
 
         scr.erase()
+        error(scr, error_message)
         h, w = scr.getmaxyx()
         if h < 10 or w < 40:
             scr.addstr(0, 0, "terminal too small!")
@@ -314,7 +277,7 @@ def test(scr, ti, di, update_info=None, theme_name="default", strict=False):
             if update_info and update_info["update_available"]:
                 notice = f"v{update_info['latest']} available: {update_info['update_cmd']}"
                 putc(scr, h - 2, w, notice, C_BAD)
-            putc(scr, h - 1, w, f"{get_readable_bind('stats')} stats   {get_readable_bind('theme')} theme   {get_readable_bind('restart')} new words   {get_readable_bind('exit')} quit", C_HINT)
+            putc(scr, h - 1, w, get_bottom_text(), C_HINT)
             ver = f"v{update_info['version']}" if update_info else ""
             if ver:
                 put(scr, h - 1, 1, ver, C_DIM)
@@ -381,6 +344,7 @@ def test(scr, ti, di, update_info=None, theme_name="default", strict=False):
             continue
 
         if not started:
+            module_followed = False
             if k == get_bind("exit"):  # esc
                 sys.stdout.write("\033[0 q")
                 sys.stdout.flush()
@@ -416,10 +380,20 @@ def test(scr, ti, di, update_info=None, theme_name="default", strict=False):
                 target = generate(max(80, tlimit * 3), DIFFS[di])
                 typed = []
                 continue
+            for module, options in get_modules().items():
+                if k == get_bind(module) and options["enable"] == True:
+                    mode_module = importlib.import_module(f"typer_cli.modes.{module}")
+                    exit_code = mode_module.main(target, options)
+                    if exit_code == 1:
+                        error_message = f"Failed to start {module} module"
+                    module_followed = True
+            if module_followed:
+                continue
 
         # typing
         if not started and 32 <= k <= 126:
             started = True
+            error_message = ""
             t0 = time.time()
 
         if k in (curses.KEY_BACKSPACE, 127, 8):
@@ -451,6 +425,14 @@ def test(scr, ti, di, update_info=None, theme_name="default", strict=False):
     elapsed = time.time() - t0 if started else 0.001
     return calc_results(target, typed, elapsed, keystrokes, errors, strict), ti, di, theme_name
 
+def get_bottom_text():
+    gap = "   "
+    string = f"{get_readable_bind('stats')} stats{gap}{get_readable_bind('theme')} theme{gap}{get_readable_bind('restart')} new words{gap}{get_readable_bind('exit')} quit"
+    for module, options in get_modules().items():
+        if options["enable"] == True:
+            bind =  get_readable_bind(module)
+            string += f"{gap}{bind} {module}"
+    return string
 
 # ── name prompt ──────────────────────────────────────────────────────────────
 

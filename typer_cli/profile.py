@@ -20,7 +20,8 @@ _DEFAULT = {
        "time_decrease": 260,
        "difficulty_increase": 259,
        "difficulty_decrease": 258
-    }
+    },
+    "modules": {}
 }
 
 
@@ -69,11 +70,14 @@ def set_theme(name):
 
 def get_bind(bind_name):
     p = read_profile()
-    key = p.get("binds", _DEFAULT["binds"]).get(bind_name, _DEFAULT["binds"][bind_name])
+    key = p.get("binds", _DEFAULT["binds"]).get(bind_name, _DEFAULT["binds"].get(bind_name, ""))
     if isinstance(key, int): # Return as int, if it's not an int, ord it
         return key
     return ord(key)
 
+def get_modules():
+    p = read_profile()
+    return p.get("modules", {})
 
 def append_test(result, time_limit, difficulty):
     p = read_profile()
