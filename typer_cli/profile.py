@@ -7,7 +7,21 @@ from datetime import date, datetime, timedelta
 PROFILE_DIR = os.path.expanduser("~/.config/typer")
 PROFILE_FILE = os.path.join(PROFILE_DIR, "profile.json")
 
-_DEFAULT = {"name": "", "created": "", "tests": []}
+_DEFAULT = {
+    "name": "",
+    "created": "",
+    "tests": [],
+    "binds": {
+       "theme": "t",
+       "stats": "s",
+       "restart": 9,
+       "exit": 27,
+       "time_increase": 261,
+       "time_decrease": 260,
+       "difficulty_increase": 259,
+       "difficulty_decrease": 258
+    }
+}
 
 
 def profile_exists():
@@ -29,11 +43,9 @@ def write_profile(data):
 
 
 def create_profile(name):
-    data = {
-        "name": name,
-        "created": datetime.now().isoformat(),
-        "tests": [],
-    }
+    data = _DEFAULT
+    data["name"] = name
+    data["created"] = datetime.now().isoformat()
     write_profile(data)
     return data
 
@@ -54,6 +66,13 @@ def set_theme(name):
     p = read_profile()
     p["theme"] = name
     write_profile(p)
+
+def get_bind(bind_name):
+    p = read_profile()
+    key = p.get("binds", _DEFAULT["binds"]).get(bind_name, _DEFAULT["binds"][bind_name])
+    if isinstance(key, int): # Return as int, if it's not an int, ord it
+        return key
+    return ord(key)
 
 
 def append_test(result, time_limit, difficulty):
